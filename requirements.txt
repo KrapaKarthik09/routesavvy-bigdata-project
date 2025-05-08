@@ -1,0 +1,8 @@
+pyspark
+kafka-python
+flask
+pandas
+scikit-learn
+matplotlib
+requests
+geopy
