@@ -3,3 +3,5 @@
 .routesavvy_env/
 # Allow requirements.txt
 !requirements.txt
+/routesavvy_env/bin
+/routesavvy_env
