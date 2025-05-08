@@ -1,0 +1,5 @@
+# Ignore .env folder
+.env/
+.routesavvy_env/
+# Allow requirements.txt
+!requirements.txt
