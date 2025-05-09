@@ -60,3 +60,6 @@ Additional Libraries: (e.g., scikit-learn, pandas, matplotlib)
 
 By harnessing the power of big data technologies, RouteSavvy aims to revolutionize urban commuting through real-time, data-driven route optimization. The integration of diverse data sources, advanced processing frameworks, and predictive analytics will culminate in a solution that enhances the efficiency and reliability of urban transportation systems.
 
+NOTES FOR SELF
+link for the dataset :https://data.ny.gov/Transportation/MTA-Subway-Hourly-Ridership-2020-2024/wujg-7c2s/about_data
+latest data is for 12/31/2024 , no data for 2025 so we have to use last years ridership to guess this years ridership on the same days, for example public holidays like christmas , easter , etc we can compare dates from the last year
