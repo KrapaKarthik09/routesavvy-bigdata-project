@@ -7,3 +7,9 @@
 /routesavvy_env
 /notebooks/data
 .DS_Store
+
+.mongo-data/
+.mongo-data/*
+.spark-data/
+
+
