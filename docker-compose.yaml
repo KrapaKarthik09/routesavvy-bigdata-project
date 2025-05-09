@@ -49,7 +49,7 @@ services:
       - KAFKA_CLUSTERS_0_BOOTSTRAPSERVERS=broker:9093
       - KAFKA_CLUSTERS_0_ZOOKEEPER=zookeeper:2181
   
-  spark:
+  spark-master:
     image: docker.io/bitnami/spark:3.3
     networks:
       - local-bigdata
@@ -64,24 +64,49 @@ services:
       - '8080:8080'
       - '7077:7077'
     volumes:
-      - "./spark-data/:/opt/spark/"
+      - "./spark-data/:/opt/spark/data"
+      - "./scripts/:/opt/spark/scripts/"
 
   spark-worker:
     image: docker.io/bitnami/spark:3.3
     networks:
       - local-bigdata
+    depends_on:
+      - spark-master
     environment:
       - SPARK_MODE=worker
-      - SPARK_MASTER_URL=spark://spark:7077
-      - SPARK_WORKER_MEMORY=3G      
+      - SPARK_MASTER_URL=spark://spark-master:7077
+      - SPARK_WORKER_MEMORY=2G      
       - SPARK_WORKER_CORES=1
       - SPARK_RPC_AUTHENTICATION_ENABLED=no
       - SPARK_RPC_ENCRYPTION_ENABLED=no
       - SPARK_LOCAL_STORAGE_ENCRYPTION_ENABLED=no
       - SPARK_SSL_ENABLED=no
       - SPARK_USER=spark
-    
+    volumes:
+      - "./spark-data/:/opt/spark/data"
+      - "./scripts/:/opt/spark/scripts"
   
+  spark-worker2:
+    image: docker.io/bitnami/spark:3.3
+    networks:
+      - local-bigdata
+    depends_on:
+      - spark-master
+    environment:
+      - SPARK_MODE=worker
+      - SPARK_MASTER_URL=spark://spark-master:7077
+      - SPARK_WORKER_MEMORY=2G      
+      - SPARK_WORKER_CORES=1
+      - SPARK_RPC_AUTHENTICATION_ENABLED=no
+      - SPARK_RPC_ENCRYPTION_ENABLED=no
+      - SPARK_LOCAL_STORAGE_ENCRYPTION_ENABLED=no
+      - SPARK_SSL_ENABLED=no
+      - SPARK_USER=spark
+    volumes:
+      - "./spark-data/:/opt/spark/data"
+      - "./scripts/:/opt/spark/scripts"
+
   mongo:
     image: mongo:latest
     volumes: 
