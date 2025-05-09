@@ -10,7 +10,8 @@
 
 .mongo-data/
 mongo-data/
-spark-data/
+src/data/spark-data/
+src/data/spark-logs/
 creds/
 
 
