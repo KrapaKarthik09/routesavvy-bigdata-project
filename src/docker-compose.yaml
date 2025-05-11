@@ -1,7 +1,5 @@
 version: '3'
 networks:
-  local-bigdata:
-    driver: bridge
   local-spark:
     driver: bridge
 
@@ -10,7 +8,7 @@ services:
     image: confluentinc/cp-zookeeper:7.0.1
     container_name: zookeeper
     networks:
-      - local-bigdata
+      - local-spark
     environment:
       ZOOKEEPER_CLIENT_PORT: 2181
       ZOOKEEPER_TICK_TIME: 2000
@@ -19,7 +17,9 @@ services:
     image: confluentinc/cp-kafka:7.0.1
     container_name: broker
     networks:
-      - local-bigdata
+      local-spark:
+          aliases:
+            - "spark"
     ports:
       - "9092:9092"
       - "9093:9093"
@@ -40,7 +40,9 @@ services:
     image: provectuslabs/kafka-ui
     container_name: kafka-ui
     networks:
-      - local-bigdata
+      local-spark:
+          aliases:
+            - "spark"
     depends_on: 
       - broker
     ports:
@@ -65,6 +67,8 @@ services:
       - ./utils:/opt/spark/utils
     environment:
       - SPARK_MODE=master
+      - SPARL_MASTER_HOST=spark-master
+      - SPARK_LOCAL_IP=spark-master
       - SPARK_RPC_AUTHENTICATION_ENABLED=no
       - SPARK_RPC_ENCRYPTION_ENABLED=no
       - SPARK_LOCAL_STORAGE_ENCRYPTION_ENABLED=no
@@ -77,7 +81,6 @@ services:
       local-spark:
           aliases:
             - "spark"
-      local-bigdata: {}
 
   spark-worker:
     &worker
@@ -103,7 +106,6 @@ services:
       local-spark:
           aliases:
             - "spark"
-      local-bigdata: {}
   spark-history-server:
     container_name: spark-history
     image: spark-image
@@ -124,7 +126,6 @@ services:
       local-spark:
           aliases:
             - "spark"
-      local-bigdata: {}
 
   mongo:
     image: mongo:latest
@@ -133,4 +134,6 @@ services:
     ports:
       - "27017:27017"
     networks:
-      - local-bigdata
+      local-spark:
+          aliases:
+            - "spark"
