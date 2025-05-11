@@ -1,7 +1,6 @@
 from pyspark.sql import SparkSession
-from pyspark.sql.functions import from_json, col, explode, split, to_timestamp, udf
-from pyspark.sql.types import StructType, StructField, StringType, DoubleType, FloatType, IntegerType, LongType, TimestampType
-import json
+from pyspark.sql.functions import from_json, col, to_timestamp
+from pyspark.sql.types import StructType, StructField, StringType, DoubleType, IntegerType, TimestampType
 
 # Create Spark session
 spark = SparkSession.builder \
@@ -25,14 +24,7 @@ mta_schema = StructType([
     StructField("ridership", DoubleType()),
     StructField("transfers", DoubleType()),
     StructField("latitude", DoubleType()),
-    StructField("longitude", DoubleType()),
-    StructField("georeference", StructType([
-        StructField("type", StringType()),
-        StructField("coordinates", StructType([
-            StructField("longitude", DoubleType()),
-            StructField("latitude", DoubleType())
-        ]))
-    ]))
+    StructField("longitude", DoubleType())
 ])
 
 # Define schema for Traffic data
@@ -43,11 +35,6 @@ traffic_schema = StructType([
     StructField("status", IntegerType()),
     StructField("data_as_of", StringType()),
     StructField("link_id", StringType()),
-    StructField("link_points", StringType()),
-    StructField("encoded_poly_line", StringType()),
-    StructField("encoded_poly_line_lvls", StringType()),
-    StructField("owner", StringType()),
-    StructField("transcom_id", StringType()),
     StructField("borough", StringType()),
     StructField("link_name", StringType()),
     StructField("ingestion_timestamp", DoubleType())
@@ -82,7 +69,9 @@ mta_df = spark \
     .option("startingOffsets", "earliest") \
     .load()
 
-mta_df = mta_df.select(from_json(col("value").cast("string"), mta_schema).alias("data")).select("data.*")
+mta_df = mta_df.select(from_json(col("value").cast("string"), mta_schema).alias("data")).select("data.*") \
+    .withColumn("event_time", to_timestamp(col("transit_timestamp"))) \
+    .withWatermark("event_time", "15 minutes")
 
 # Read NYC traffic data from Kafka
 traffic_df = spark \
@@ -93,7 +82,9 @@ traffic_df = spark \
     .option("startingOffsets", "earliest") \
     .load()
 
-traffic_df = traffic_df.select(from_json(col("value").cast("string"), traffic_schema).alias("data")).select("data.*")
+traffic_df = traffic_df.select(from_json(col("value").cast("string"), traffic_schema).alias("data")).select("data.*") \
+    .withColumn("event_time", to_timestamp(col("data_as_of"))) \
+    .withWatermark("event_time", "15 minutes")
 
 # Read weather data from Kafka
 weather_df = spark \
@@ -104,14 +95,11 @@ weather_df = spark \
     .option("startingOffsets", "earliest") \
     .load()
 
-weather_df = weather_df.select(from_json(col("value").cast("string"), weather_schema).alias("data")).select("data.*")
+weather_df = weather_df.select(from_json(col("value").cast("string"), weather_schema).alias("data")).select("data.*") \
+    .withColumn("event_time", to_timestamp(col("time"))) \
+    .withWatermark("event_time", "15 minutes")
 
-# Convert timestamps for joining
-mta_df = mta_df.withColumn("event_time", to_timestamp(col("transit_timestamp")))
-traffic_df = traffic_df.withColumn("event_time", to_timestamp(col("data_as_of")))
-weather_df = weather_df.withColumn("event_time", to_timestamp(col("time")))
-
-# Join MTA, Traffic, and Weather data on time and location (latitude, longitude)
+# Join MTA, Traffic, and Weather data on event_time
 combined_df = mta_df.join(traffic_df, ["event_time", "borough"], "left") \
     .join(weather_df, ["event_time"], "left") \
     .select(
