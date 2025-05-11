@@ -51,9 +51,11 @@ try:
         
         # Publish to Kafka
         for data in subway_data:
-            p.produce(topic, json.dumps(data).encode('utf-8'), callback=lambda err, msg: 
-                      print(f"Delivered to {msg.topic()} [{msg.partition()}]" if err is None else f"Failed delivery: {err}"))
-            total_count += 1
+            # Check for empty or null values in any field
+            if all(value is not None and value != "" for value in data.values()):
+                p.produce(topic, json.dumps(data).encode('utf-8'), callback=lambda err, msg: 
+                          print(f"Delivered to {msg.topic()} [{msg.partition()}]" if err is None else f"Failed delivery: {err}"))
+                total_count += 1
         
         # Flush the producer to avoid buffer overflow
         p.flush()
