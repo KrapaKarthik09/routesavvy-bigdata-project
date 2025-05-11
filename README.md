@@ -23,6 +23,7 @@ Reduce travel times
 Avoid congested areas
 Provide more informed transportation choices
 Enhance overall commuter satisfaction
+
 🛠️ Methodology
 
 1. Data Collection and Ingestion
