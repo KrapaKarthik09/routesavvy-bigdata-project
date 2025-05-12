@@ -15,3 +15,5 @@ src/data/spark-logs/
 creds/
 
 
+/src/data/spark-events
+*.inprogress

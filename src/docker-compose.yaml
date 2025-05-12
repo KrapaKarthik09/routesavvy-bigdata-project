@@ -63,13 +63,20 @@ services:
     command: bin/spark-class org.apache.spark.deploy.master.Master
     volumes:
       - ./jobs:/opt/bitnami/spark/jobs
+<<<<<<< HEAD
+      - ./data/spark-data:/opt/spark/data       # fixed for checkpoint mount
+      - ./utils:/opt/bitnami/spark/utils
+      - ./conf:/opt/bitnami/spark/conf
+      - ./data/spark-events:/tmp/spark-events
+=======
       - ./data/spark-data:/opt/bitnami/spark/data
       - ./utils:/opt/bitnami/spark/utils
       - ./conf:/opt/bitnami/spark/conf
       - ./data/spark-events:/opt/bitnami/spark/events
+>>>>>>> 6d29302a047a0793c35f895e7aed8af8d4e9fa09
     environment:
       - SPARK_MODE=master
-      - SPARL_MASTER_HOST=spark-master
+      - SPARK_MASTER_HOST=spark-master
       - SPARK_LOCAL_IP=spark-master
       - SPARK_RPC_AUTHENTICATION_ENABLED=no
       - SPARK_RPC_ENCRYPTION_ENABLED=no
@@ -87,35 +94,55 @@ services:
             - "spark"
 
   spark-worker:
-    &worker
     image: spark-image
     command: bin/spark-class org.apache.spark.deploy.worker.Worker spark://spark-master:7077
     volumes:
       - ./jobs:/opt/bitnami/spark/jobs
+<<<<<<< HEAD
+      - ./data/spark-data:/opt/spark/data       # fixed for checkpoint mount
+      - ./utils:/opt/bitnami/spark/utils
+      - ./conf:/opt/bitnami/spark/conf
+      - ./data/spark-events:/tmp/spark-events
+=======
       - ./data/spark-data:/opt/bitnami/spark/data
       - ./utils:/opt/bitnami/spark/utils
       - ./conf:/opt/bitnami/spark/conf
       - ./data/spark-events:/opt/bitnami/spark/events
+>>>>>>> 6d29302a047a0793c35f895e7aed8af8d4e9fa09
     depends_on:
       - spark-master
     environment:
       - SPARK_MODE=worker
       - SPARK_WORKER_CORES=2
+<<<<<<< HEAD
       - SPARK_WORKER_MEMORY=4g
+=======
+<<<<<<< HEAD
+      - SPARK_WORKER_MEMORY=4g
+=======
+      - SPARK_WORKER_MEMORY=3g
+>>>>>>> 6d29302a047a0793c35f895e7aed8af8d4e9fa09
+>>>>>>> a47ee1deed3bc7e3e81cc2b9eb279416fa4a21e7
       - SPARK_MASTER_URL=spark://spark-master:7077
       - SPARK_RPC_AUTHENTICATION_ENABLED=no
       - SPARK_RPC_ENCRYPTION_ENABLED=no
       - SPARK_LOCAL_STORAGE_ENCRYPTION_ENABLED=no
       - SPARK_SSL_ENABLED=no
       - SPARK_USER=spark
+<<<<<<< HEAD
+    ports:
+      - "8081:8081"
+=======
       - SPARK_CONF_DIR=/opt/bitnami/spark/conf
       - SPARK_CONF_FILE=/opt/bitnami/spark/conf/spark-defaults.conf
 
 
+>>>>>>> 6d29302a047a0793c35f895e7aed8af8d4e9fa09
     networks:
       local-spark:
           aliases:
             - "spark"
+          
   spark-history-server:
     container_name: spark-history
     image: spark-image
