@@ -1,6 +1,6 @@
 import os
 from pyspark.sql import SparkSession
-from pyspark.sql.functions import from_json, col, to_timestamp
+from pyspark.sql.functions import from_json, col, to_timestamp, to_json, struct
 from pyspark.sql.types import StructType, StructField, StringType, DoubleType, IntegerType
 
 # ────────────────────────────────  1. Spark session
@@ -20,6 +20,7 @@ BOOTSTRAP  = "broker:9093"
 CHECKPOINT = "/opt/spark/data/chk"
 GROUP_ID   = "nyc-streaming"
 RUN_MODE   = os.getenv("RUN_MODE", "live").lower()     # live | historical
+OUTPUT_TOPIC = "nyc-combined-data"  # Name of the output Kafka topic
 
 # ────────────────────────────────  3. Schemas (unchanged)
 mta_schema = StructType([
@@ -72,10 +73,10 @@ def read_kafka(topic, schema, ts_col):
     reader = (spark.readStream.format("kafka")
               .option("kafka.bootstrap.servers", BOOTSTRAP)
               .option("subscribe", topic)
-              .option("group.id", GROUP_ID)
-              .option("startingOffsets", "earliest")     # read backlog
+              .option("startingOffsets", "earliest")
               .option("failOnDataLoss", "false")
               .option("maxOffsetsPerTrigger", 200_000))
+    
     df = (reader.load()
                 .select(from_json(col("value").cast("string"), schema).alias("j"))
                 .select("j.*")
@@ -96,14 +97,39 @@ joined = (mta_df.join(traffic_df, ["borough", "event_time"], "leftOuter")
                          "temperature_2m","precipitation",
                          "wind_speed_10m","cloud_cover","weather_description"))
 
-# ────────────────────────────────  6. Sink
-writer = (joined.writeStream.outputMode("append")
-          .format("console").option("truncate","false")
-          .option("checkpointLocation", CHECKPOINT))
+# ────────────────────────────────  6. Prepare data for Kafka output
+# Convert the joined data to JSON format for Kafka
+kafka_output_df = joined.select(
+    to_json(struct("*")).alias("value")
+)
 
+# ────────────────────────────────  7. Sink configuration
+# Set up the writer for Kafka output
+writer = (kafka_output_df.writeStream
+          .outputMode("append")
+          .format("kafka")
+          .option("kafka.bootstrap.servers", BOOTSTRAP)
+          .option("topic", OUTPUT_TOPIC)
+          .option("checkpointLocation", CHECKPOINT + "/kafka-output"))
+
+# Add console output for debugging (optional)
+console_writer = (joined.writeStream
+                  .outputMode("append")
+                  .format("console")
+                  .option("truncate", "false")
+                  .option("checkpointLocation", CHECKPOINT + "/console"))
+
+# ────────────────────────────────  8. Start the queries
 if RUN_MODE == "historical":
-    query = writer.trigger(once=True).start()   # back-fill then exit
+    # Back-fill then exit
+    kafka_query = writer.trigger(once=True).start()
+    # Optional console output for debugging
+    console_query = console_writer.trigger(once=True).start()
 else:
-    query = writer.trigger(processingTime="30 seconds").start()
+    # Continuous processing
+    kafka_query = writer.trigger(processingTime="30 seconds").start()
+    # Optional console output for debugging
+    console_query = console_writer.trigger(processingTime="30 seconds").start()
 
-query.awaitTermination()
+# Wait for termination
+kafka_query.awaitTermination()

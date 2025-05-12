@@ -36,31 +36,32 @@ total_count = 0
 
 try:
     while True:
-        # Fetch a batch of data
+        # fetch a page
         subway_data = client.get(
-            "wujg-7c2s", 
+            "wujg-7c2s",
             where=f"transit_timestamp >= '{start_date}' AND transit_timestamp <= '{end_date}'",
             limit=batch_size,
             offset=offset
         )
 
-        # Break if no more data is returned
-        if not subway_data:
+        if not subway_data:          # no more rows
             print("No more data to fetch.")
             break
-        
-        # Publish to Kafka
-        for data in subway_data:
-            # Check for empty or null values in any field
-            if all(value is not None and value != "" for value in data.values()):
-                p.produce(topic, json.dumps(data).encode('utf-8'), callback=lambda err, msg: 
-                          print(f"Delivered to {msg.topic()} [{msg.partition()}]" if err is None else f"Failed delivery: {err}"))
-                total_count += 1
-        
-        # Flush the producer to avoid buffer overflow
-        p.flush()
-        
-        # Move to the next batch
+
+        # ---------- 4  publish unchanged rows ----------
+        for row in subway_data:
+            p.produce(
+                topic,
+                json.dumps(row).encode("utf-8"),
+                callback=lambda err, msg: (
+                    print(f"Delivered to {msg.topic()} [{msg.partition()}]")
+                    if err is None else
+                    print(f"Failed delivery: {err}")
+                )
+            )
+            total_count += 1
+
+        p.flush()                    # flush each page
         offset += batch_size
         print(f"Published {total_count} messages so far...")
 
