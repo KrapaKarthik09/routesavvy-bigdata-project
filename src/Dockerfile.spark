@@ -1,6 +1,7 @@
 FROM bitnami/spark:latest
 
 COPY requirements.txt .
+COPY ./conf/ /opt/bitnami/spark/conf/
 
 USER root
 
@@ -8,3 +9,10 @@ RUN apt-get clean  && \
 	apt-get update && \
 	apt-get install -y python3-pip && \
 	pip3 install -r ./requirements.txt
+
+ENV SPARK_CONF_DIR=/opt/bitnami/spark/conf
+ENV SPARK_RPC_AUTHENTICATION_ENABLED=no
+ENV SPARK_RPC_ENCRYPTION_ENABLED=no
+ENV SPARK_LOCAL_STORAGE_ENCRYPTION_ENABLED=no
+ENV SPARK_SSL_ENABLED=no
+ENV SPARK_USER=spark
