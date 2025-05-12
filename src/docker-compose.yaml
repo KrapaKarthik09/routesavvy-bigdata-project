@@ -62,12 +62,14 @@ services:
     image: spark-image
     command: bin/spark-class org.apache.spark.deploy.master.Master
     volumes:
-      - ./jobs:/opt/spark/jobs
-      - ./data/spark-data:/opt/spark/data
-      - ./utils:/opt/spark/utils
+      - ./jobs:/opt/bitnami/spark/jobs
+      - ./data/spark-data:/opt/spark/data       # fixed for checkpoint mount
+      - ./utils:/opt/bitnami/spark/utils
+      - ./conf:/opt/bitnami/spark/conf
+      - ./data/spark-events:/tmp/spark-events
     environment:
       - SPARK_MODE=master
-      - SPARL_MASTER_HOST=spark-master
+      - SPARK_MASTER_HOST=spark-master
       - SPARK_LOCAL_IP=spark-master
       - SPARK_RPC_AUTHENTICATION_ENABLED=no
       - SPARK_RPC_ENCRYPTION_ENABLED=no
@@ -83,29 +85,33 @@ services:
             - "spark"
 
   spark-worker:
-    &worker
     image: spark-image
     command: bin/spark-class org.apache.spark.deploy.worker.Worker spark://spark-master:7077
     volumes:
-      - ./jobs:/opt/spark/jobs
-      - ./data/spark-data:/opt/spark/data
-      - ./utils:/opt/spark/utils
+      - ./jobs:/opt/bitnami/spark/jobs
+      - ./data/spark-data:/opt/spark/data       # fixed for checkpoint mount
+      - ./utils:/opt/bitnami/spark/utils
+      - ./conf:/opt/bitnami/spark/conf
+      - ./data/spark-events:/tmp/spark-events
     depends_on:
       - spark-master
     environment:
       - SPARK_MODE=worker
       - SPARK_WORKER_CORES=2
-      - SPARK_WORKER_MEMORY=1g
+      - SPARK_WORKER_MEMORY=4g
       - SPARK_MASTER_URL=spark://spark-master:7077
       - SPARK_RPC_AUTHENTICATION_ENABLED=no
       - SPARK_RPC_ENCRYPTION_ENABLED=no
       - SPARK_LOCAL_STORAGE_ENCRYPTION_ENABLED=no
       - SPARK_SSL_ENABLED=no
       - SPARK_USER=spark
+    ports:
+      - "8081:8081"
     networks:
       local-spark:
           aliases:
             - "spark"
+          
   spark-history-server:
     container_name: spark-history
     image: spark-image

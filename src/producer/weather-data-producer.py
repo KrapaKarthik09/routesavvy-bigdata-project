@@ -1,102 +1,101 @@
-from confluent_kafka import Producer
-import json
-import time
-import requests
+# ─────────────────────────────────────────────────────────────
+# Relaxed join: MTA  ⇽±5 min⇾  Traffic   (ignore weather)
+# ─────────────────────────────────────────────────────────────
+import os
+from pyspark.sql import SparkSession
+from pyspark.sql.functions import from_json, col, to_timestamp, expr
+from pyspark.sql.types import (
+    StructType, StructField, StringType, DoubleType, IntegerType
+)
 
-# Create a Kafka producer
-p = Producer({'bootstrap.servers': 'localhost:9092'})
+# 1 ── Spark session  (cluster master + resources)
+spark = (
+    SparkSession.builder
+    .appName("NYC_Streaming_RelaxedJoin")
+    .master("spark://spark-master:7077")
+    .config("spark.executor.memory", "4g")
+    .config("spark.executor.cores", 2)
+    .config("spark.driver.memory",  "4g")
+    .config("spark.sql.shuffle.partitions", "8")
+    .getOrCreate()
+)
 
-# Topic name
-topic = 'weather-data'
+# 2 ── Settings
+BOOTSTRAP  = "broker:9093"
+CHECKPOINT = "/opt/spark/data/chk_relaxed"
+GROUP_ID   = "nyc-streaming-relaxed"
+RUN_MODE   = os.getenv("RUN_MODE", "live").lower()      # live | historical
 
-# Define parameters for New York City
-latitude = 40.7128
-longitude = -74.0060
+# 3 ── Schemas
+mta_schema = StructType([
+    StructField("transit_timestamp",  StringType()),
+    StructField("transit_mode",       StringType()),
+    StructField("station_complex_id", StringType()),
+    StructField("station_complex",    StringType()),
+    StructField("borough",            StringType()),
+    StructField("payment_method",     StringType()),
+    StructField("fare_class_category",StringType()),
+    StructField("ridership",          DoubleType()),
+    StructField("transfers",          DoubleType()),
+    StructField("latitude",           DoubleType()),
+    StructField("longitude",          DoubleType())
+])
 
-# Define the date range
-start_date = "2024-05-01"
-end_date = "2024-05-31"
+traffic_schema = StructType([
+    StructField("id",            StringType()),
+    StructField("speed",         DoubleType()),
+    StructField("travel_time",   IntegerType()),
+    StructField("status",        IntegerType()),
+    StructField("data_as_of",    StringType()),
+    StructField("link_id",       StringType()),
+    StructField("borough",       StringType()),
+    StructField("link_name",     StringType()),
+    StructField("ingestion_timestamp", DoubleType())
+])
 
-# Historical Weather API endpoint
-url = f"https://archive-api.open-meteo.com/v1/archive?latitude={latitude}&longitude={longitude}&start_date={start_date}&end_date={end_date}&hourly=temperature_2m,precipitation,wind_speed_10m,visibility,cloud_cover,weather_code&timezone=America/New_York"
+# 4 ── Kafka reader helper
+def read_kafka(topic, schema, ts_col):
+    reader = (spark.readStream.format("kafka")
+              .option("kafka.bootstrap.servers", BOOTSTRAP)
+              .option("subscribe", topic)
+              .option("group.id", GROUP_ID)
+              .option("startingOffsets", "earliest")
+              .option("failOnDataLoss", "false"))
+    if RUN_MODE == "historical":
+        reader = reader.option("endingOffsets", "latest")
+    return (reader.load()
+            .select(from_json(col("value").cast("string"), schema).alias("j"))
+            .select("j.*")
+            .withColumn("event_time", to_timestamp(col(ts_col)))
+            .withWatermark("event_time", "15 minutes"))
 
-try:
-    # Fetch historical weather data
-    print(f"Fetching historical weather data from {start_date} to {end_date}...")
-    response = requests.get(url)
-    response.raise_for_status()
-    weather_data = response.json()
-    
-    # Add processing metadata
-    weather_data['producer_timestamp'] = time.time()
-    weather_data['location_name'] = 'New York City'
-    weather_data['query_period'] = f"{start_date} to {end_date}"
-    
-    # Weather code descriptions for human-readable conditions
-    weather_codes = {
-        0: "Clear sky", 1: "Mainly clear", 2: "Partly cloudy", 3: "Overcast",
-        45: "Fog", 48: "Depositing rime fog", 51: "Light drizzle", 53: "Moderate drizzle",
-        55: "Dense drizzle", 56: "Light freezing drizzle", 57: "Dense freezing drizzle",
-        61: "Slight rain", 63: "Moderate rain", 65: "Heavy rain", 66: "Light freezing rain",
-        67: "Heavy freezing rain", 71: "Slight snow fall", 73: "Moderate snow fall",
-        75: "Heavy snow fall", 77: "Snow grains", 80: "Slight rain showers",
-        81: "Moderate rain showers", 82: "Violent rain showers", 85: "Slight snow showers",
-        86: "Heavy snow showers", 95: "Thunderstorm", 96: "Thunderstorm with slight hail",
-        99: "Thunderstorm with heavy hail"
-    }
-    
-    # Add human-readable weather descriptions to hourly data if weather_code is present
-    if 'hourly' in weather_data and 'weather_code' in weather_data['hourly']:
-        weather_descriptions = []
-        for code in weather_data['hourly']['weather_code']:
-            if code is not None:
-                code_int = int(code)
-                weather_descriptions.append(weather_codes.get(code_int, "Unknown"))
-            else:
-                weather_descriptions.append("Unknown")
-        weather_data['hourly']['weather_description'] = weather_descriptions
-    
-    # Preprocess to separate each hourly record into different messages
-    hourly = weather_data.get('hourly', {})
-    num_records = len(hourly.get('time', []))
-    
-    print(f'Processing {num_records} hourly records...')
-    
-    # Process and send each hourly record as a separate message
-    for i in range(num_records):
-        # Create individual message with metadata and hourly data
-        message = {
-            'latitude': weather_data['latitude'],
-            'longitude': weather_data['longitude'],
-            'elevation': weather_data.get('elevation'),
-            'timezone': weather_data['timezone'],
-            'timezone_abbreviation': weather_data.get('timezone_abbreviation'),
-            'producer_timestamp': weather_data['producer_timestamp'],
-            'location_name': weather_data['location_name'],
-            'query_period': weather_data['query_period'],
-            'time': hourly['time'][i],
-            'temperature_2m': hourly['temperature_2m'][i],
-            'precipitation': hourly['precipitation'][i],
-            'wind_speed_10m': hourly['wind_speed_10m'][i],
-            'visibility': hourly['visibility'][i] if 'visibility' in hourly else None,
-            'cloud_cover': hourly['cloud_cover'][i],
-            'weather_code': hourly['weather_code'][i],
-            'weather_description': hourly['weather_description'][i]
-        }
-        
-        # Send individual message to Kafka
-        p.produce(topic, json.dumps(message))
-        
-        # Print progress every 100 records
-        if (i + 1) % 100 == 0 or i == 0 or i == num_records - 1:
-            print(f'Sent record {i + 1}/{num_records}: {message["time"]} - {message["weather_description"]}')
-    
-    # Ensure all messages are sent
-    p.flush()
-    print(f"Published {num_records} hourly weather records to topic: {topic}")
-    
-except requests.exceptions.RequestException as e:
-    print(f"Error fetching weather data: {e}")
-    print(f"Response content: {response.content if 'response' in locals() else 'No response'}")
-except Exception as e:
-    print(f"Unexpected error: {e}")
+mta_df     = read_kafka("mta-subway-data-may-2024",  mta_schema,    "transit_timestamp")
+traffic_df = read_kafka("nyc-traffic-data-may-2024", traffic_schema,"data_as_of")
+
+# 5 ── Relaxed join: same borough AND |Δt| ≤ 5 min
+joined = (
+    mta_df.join(
+        traffic_df,
+        (mta_df.borough == traffic_df.borough) &
+        (traffic_df.event_time.between(
+            expr("event_time - interval 5 minutes"),
+            expr("event_time + interval 5 minutes"))),
+        "leftOuter"                            # keep every MTA record
+    )
+    .select(
+        mta_df.event_time.alias("event_time"),
+        "station_complex", "borough",
+        "ridership", "transfers",
+        "speed", "travel_time", "link_name"
+    )
+)
+
+# 6 ── Sink to console
+writer = (joined.writeStream.outputMode("append")
+          .format("console").option("truncate","false").option("numRows","20")
+          .option("checkpointLocation", CHECKPOINT))
+
+query = (writer.trigger(once=True).start() if RUN_MODE == "historical"
+         else writer.trigger(processingTime="30 seconds").start())
+
+query.awaitTermination()
