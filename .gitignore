@@ -12,6 +12,7 @@
 mongo-data/
 src/data/spark-data/
 src/data/spark-logs/
+src/data/metabase-data
 creds/
 
 
