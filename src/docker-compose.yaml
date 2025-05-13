@@ -4,6 +4,8 @@ networks:
     driver: bridge
 
 services:
+  # ───── Other Services ─────
+
   zookeeper:
     image: confluentinc/cp-zookeeper:7.0.1
     container_name: zookeeper
@@ -18,8 +20,8 @@ services:
     container_name: broker
     networks:
       local-spark:
-          aliases:
-            - "spark"
+        aliases:
+          - "spark"
     ports:
       - "9092:9092"
       - "9093:9093"
@@ -41,8 +43,8 @@ services:
     container_name: kafka-ui
     networks:
       local-spark:
-          aliases:
-            - "spark"
+        aliases:
+          - "spark"
     depends_on: 
       - broker
     ports:
@@ -83,11 +85,10 @@ services:
       - "7077:7077"
     networks:
       local-spark:
-          aliases:
-            - "spark"
+        aliases:
+          - "spark"
 
   spark-worker:
-    &worker
     image: spark-image
     command: bin/spark-class org.apache.spark.deploy.worker.Worker spark://spark-master:7077
     volumes:
@@ -110,12 +111,11 @@ services:
       - SPARK_USER=spark
       - SPARK_CONF_DIR=/opt/bitnami/spark/conf
       - SPARK_CONF_FILE=/opt/bitnami/spark/conf/spark-defaults.conf
-
-
     networks:
       local-spark:
-          aliases:
-            - "spark"
+        aliases:
+          - "spark"
+
   spark-history-server:
     container_name: spark-history
     image: spark-image
@@ -136,8 +136,8 @@ services:
       - '18080:18080'
     networks:
       local-spark:
-          aliases:
-            - "spark"
+        aliases:
+          - "spark"
 
   mongo:
     image: mongo:latest
@@ -147,5 +147,58 @@ services:
       - "27017:27017"
     networks:
       local-spark:
-          aliases:
-            - "spark"
+        aliases:
+          - "spark"
+  telegraf:
+    image: telegraf:latest
+    container_name: telegraf
+    networks:
+      - local-spark
+    volumes:
+      - ./telegraf/telegraf.conf:/etc/telegraf/telegraf.conf
+    depends_on:
+      - influxdb
+      - broker
+    environment:
+      HOSTNAME: telegraf
+      INFLUX_TOKEN: "admin:password"
+      INFLUX_ORG: "nyc"
+      INFLUX_BUCKET: "mta"
+      INFLUX_URL: "http://influxdb:8086"
+    restart: always
+  influxdb:
+    image: influxdb:2.7
+    container_name: influxdb
+    ports:
+      - "8086:8086"
+    networks:
+      local-spark:
+        aliases:
+          - "spark"
+    environment:
+      INFLUXDB_DB: mta
+      INFLUXDB_ADMIN_USER: admin
+      INFLUXDB_ADMIN_PASSWORD: password
+      INFLUXDB_TOKEN: eBcV1gOLKpSIdf4QO_ObP9Uc1tcG0XhDe-DCuHEdFJklUIOqj3-Z54EVn0RYRq7lkxCb1nameSFISrKM2XL6tw==
+      INFLUXDB_BUCKET: mta
+      INFLUXDB_ORG: nyc
+      INFLUXDB_RETENTION: 7d
+      DOCKER_INFLUXDB_INIT_MODE: setup
+      DOCKER_INFLUXDB_INIT_USERNAME: admin
+      DOCKER_INFLUXDB_INIT_PASSWORD: password
+      DOCKER_INFLUXDB_INIT_ORG: nyc
+      DOCKER_INFLUXDB_INIT_BUCKET: mta
+      DOCKER_INFLUXDB_INIT_RETENTION: 30d
+
+  grafana:
+    image: grafana/grafana:latest
+    container_name: grafana
+    ports:
+      - "3000:3000"
+    networks:
+      local-spark:
+        aliases:
+          - "spark"
+    environment:
+      GF_SECURITY_ADMIN_USER: admin
+      GF_SECURITY_ADMIN_PASSWORD: password

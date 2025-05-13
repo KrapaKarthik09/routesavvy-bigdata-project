@@ -2,9 +2,9 @@
 import os
 from pyspark.sql import SparkSession
 from pyspark.sql.types import *
-from pyspark.sql.functions import from_json, to_json, struct
+from pyspark.sql.functions import from_json
 
-# ────────────────────────────────────────── ①  Schema ──────────────────────────────────────────
+# ───────────────────────────── ①  SCHEMA ─────────────────────────────
 schema = StructType([
     StructField("transit_timestamp", TimestampType()),
     StructField("transit_mode",       StringType()),
@@ -13,8 +13,8 @@ schema = StructType([
     StructField("borough",            StringType()),
     StructField("payment_method",     StringType()),
     StructField("fare_class_category",StringType()),
-    StructField("ridership",          DoubleType()),
-    StructField("transfers",          DoubleType()),
+    StructField("ridership",          DoubleType()),   # keep as-is
+    StructField("transfers",          DoubleType()),   # keep as-is
     StructField("latitude",           DoubleType()),
     StructField("longitude",          DoubleType()),
     StructField("georeference", StructType([
@@ -23,12 +23,12 @@ schema = StructType([
     ]))
 ])
 
-# ────────────────────────────────────────── ②  I/O settings  ───────────────────────────────────
+# ───────────────────────────── ②  I/O SETTINGS ───────────────────────
 SRC_TOPIC   = "mta-subway-data-may-2024"
 DST_TOPIC   = "mta-subway-clean-2"
 BOOTSTRAP   = "broker:9093"
 CHECKPOINT  = "/opt/spark/data/_chk_mta_k2k"
-OFFSET_MODE = "earliest"        # hard-coded “historical” run
+OFFSET_MODE = "earliest"                       # historical
 
 spark = (
     SparkSession.builder
@@ -36,7 +36,7 @@ spark = (
         .getOrCreate()
 )
 
-# ────────────────────────────────────────── ③  Read from Kafka ────────────────────────────────
+# ───────────────────────────── ③  READ FROM KAFKA ────────────────────
 raw_df = (
     spark.readStream
          .format("kafka")
@@ -53,21 +53,22 @@ parsed_df = (
         .select("data.*")
 )
 
-# Register the stream as a SQL temp view
 parsed_df.createOrReplaceTempView("mta_raw")
 
-# ────────────────────────────────────────── ④  SQL transformation ─────────────────────────────
+# ───────────────────────────── ④  SQL TRANSFORM ──────────────────────
 clean_sql = """
 WITH cleaned AS (
   SELECT
       station_complex_id,
-      lower(station_complex)           AS station_complex,
-      lower(borough)                   AS borough,
+      lower(station_complex) AS station_complex,
+      lower(borough)         AS borough,
       transit_mode,
       transit_timestamp,
-      /* ----------- cleanse numeric fields ----------- */
-      CAST(regexp_replace(trim(ridership ), ',', '') AS double) AS ridership,
-      CAST(regexp_replace(trim(transfers ), ',', '') AS double) AS transfers,
+
+      /* keep the numeric value, just strip commas */
+      CAST(regexp_replace(ridership , ',', '') AS double)  AS ridership,
+      CAST(regexp_replace(transfers, ',', '') AS double)  AS transfers,
+
       latitude,
       longitude
   FROM mta_raw
@@ -78,20 +79,14 @@ SELECT
     station_complex,
     borough,
     transit_mode,
-    year(transit_timestamp)                              AS year,
-    month(transit_timestamp)                             AS month,
-    dayofmonth(transit_timestamp)                        AS day,
-    hour(transit_timestamp)                              AS hour,
+    year(transit_timestamp)       AS year,
+    month(transit_timestamp)      AS month,
+    dayofmonth(transit_timestamp) AS day,
+    hour(transit_timestamp)       AS hour,
 
-    /* use cleansed numbers, fall back to 0.0 only if *still* null */
-    COALESCE(ridership , 0.0)                            AS ridership,
-    COALESCE(transfers , 0.0)                            AS transfers,
-
-    CASE WHEN COALESCE(ridership ,0.0) > 0
-         THEN COALESCE(transfers ,0.0) /
-              COALESCE(ridership ,1.0)
-         ELSE 0
-    END                                                  AS transfer_ratio,
+    ridership,
+    transfers,            -- keep these two
+    -- (transfer_ratio column removed)
 
     latitude,
     longitude,
@@ -100,17 +95,16 @@ SELECT
         WHEN hour(transit_timestamp) BETWEEN 7  AND 9
           OR hour(transit_timestamp) BETWEEN 16 AND 19 THEN 1
         ELSE 0
-    END                                                  AS peak_hour,
+    END                         AS peak_hour,
 
     transit_timestamp
 FROM cleaned
-
-
 """
+
 
 clean_df = spark.sql(clean_sql)
 
-# ────────────────────────────────────────── ⑤  Write back to Kafka ─────────────────────────────
+# ───────────────────────────── ⑤  WRITE BACK TO KAFKA ────────────────
 (
     clean_df
       .selectExpr(
@@ -126,3 +120,4 @@ clean_df = spark.sql(clean_sql)
       .start()
       .awaitTermination()
 )
+
