@@ -4,6 +4,8 @@ networks:
     driver: bridge
 
 services:
+  # ───── Other Services ─────
+
   zookeeper:
     image: confluentinc/cp-zookeeper:7.0.1
     container_name: zookeeper
@@ -18,8 +20,8 @@ services:
     container_name: broker
     networks:
       local-spark:
-          aliases:
-            - "spark"
+        aliases:
+          - "spark"
     ports:
       - "9092:9092"
       - "9093:9093"
@@ -41,8 +43,8 @@ services:
     container_name: kafka-ui
     networks:
       local-spark:
-          aliases:
-            - "spark"
+        aliases:
+          - "spark"
     depends_on: 
       - broker
     ports:
@@ -83,11 +85,10 @@ services:
       - "7077:7077"
     networks:
       local-spark:
-          aliases:
-            - "spark"
+        aliases:
+          - "spark"
 
   spark-worker:
-    &worker
     image: spark-image
     command: bin/spark-class org.apache.spark.deploy.worker.Worker spark://spark-master:7077
     volumes:
@@ -140,8 +141,8 @@ services:
       - '18080:18080'
     networks:
       local-spark:
-          aliases:
-            - "spark"
+        aliases:
+          - "spark"
 
   mongo:
     image: mongo:latest
